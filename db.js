@@ -28,6 +28,20 @@ CREATE TABLE IF NOT EXISTS players (
 
 db.exec(createPlayersTableSql);
 
+// Migration : ajouter la colonne last_free_reset_at si elle n'existe pas
+try {
+  db.prepare(
+    "ALTER TABLE players ADD COLUMN last_free_reset_at TEXT"
+  ).run();
+  console.log("✅ Colonne last_free_reset_at ajoutée à players");
+} catch (e) {
+  // Si la colonne existe déjà, SQLite renvoie "duplicate column name"
+  if (!String(e.message).includes("duplicate column name")) {
+    console.error("❌ Erreur migration last_free_reset_at :", e);
+  }
+}
+
+
 // 2) Vérifier les colonnes existantes et ajouter celles manquantes
 const cols = db.prepare("PRAGMA table_info(players)").all();
 const colNames = cols.map((c) => c.name);
@@ -71,3 +85,4 @@ module.exports = {
   db,
   touchPlayer,
 };
+
