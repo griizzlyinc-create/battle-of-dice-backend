@@ -72,6 +72,25 @@ app.post("/auth/login", (req, res) => {
 
       console.log("👤 Nouveau player créé :", player.wallet);
     }
+  // --- Reset quotidien des lancers gratuits ---
+  const todayStr = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+  // ⚠️ adapte le nom de la colonne si besoin :
+  // ici j'assume que la colonne en DB s'appelle free_rolls
+  // et la nouvelle colonne last_free_reset_at
+  if (player.last_free_reset_at !== todayStr) {
+    const NEW_DAILY_ROLLS = 10;
+
+    db.prepare(`
+      UPDATE players
+      SET free_rolls = ?, last_free_reset_at = ?
+      WHERE id = ?
+    `).run(NEW_DAILY_ROLLS, todayStr, player.id);
+
+    // mettre à jour l'objet player en mémoire aussi
+    player.free_rolls = NEW_DAILY_ROLLS;
+    player.last_free_reset_at = todayStr;
+  }
 
         // On reconstruit l'inventaire de cartes à partir du JSON
     let ownedCards = {
@@ -292,3 +311,4 @@ app.post("/admin/give-gems", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Battle of Dice API running on http://localhost:${PORT}`);
 });
+
