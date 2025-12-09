@@ -79,13 +79,24 @@ app.post("/auth/login", (req, res) => {
       console.log("👤 Nouveau player créé :", player.wallet);
     }
   // --- Reset quotidien des lancers gratuits ---
-  const todayStr = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+   if (player.last_free_reset_at !== todayStr) {
+    // 🎖 Bonus de free rolls selon le VIP
+    // VIP 0 : +0  → 10
+    // VIP 1 : +2  → 12
+    // VIP 2 : +4  → 14
+    // VIP 3 : +6  → 16
+    // VIP 4 : +8  → 18
+    // VIP 5 : +10 → 20
+    const vip =
+      typeof player.vip_level === "number" ? player.vip_level : 0;
+    const bonusTable = [0, 2, 4, 6, 8, 10];
+    const safeLevel = Math.min(
+      Math.max(vip, 0),
+      bonusTable.length - 1
+    );
+    const vipBonus = bonusTable[safeLevel];
 
-  // ⚠️ adapte le nom de la colonne si besoin :
-  // ici j'assume que la colonne en DB s'appelle free_rolls
-  // et la nouvelle colonne last_free_reset_at
-  if (player.last_free_reset_at !== todayStr) {
-    const NEW_DAILY_ROLLS = 10;
+    const NEW_DAILY_ROLLS = 10 + vipBonus;
 
     db.prepare(`
       UPDATE players
@@ -93,10 +104,10 @@ app.post("/auth/login", (req, res) => {
       WHERE id = ?
     `).run(NEW_DAILY_ROLLS, todayStr, player.id);
 
-    // mettre à jour l'objet player en mémoire aussi
     player.free_rolls = NEW_DAILY_ROLLS;
     player.last_free_reset_at = todayStr;
   }
+
 
         // On reconstruit l'inventaire de cartes à partir du JSON
     let ownedCards = {
