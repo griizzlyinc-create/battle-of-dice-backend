@@ -338,6 +338,82 @@ app.post("/admin/give-gems", (req, res) => {
   }
 });
 
+// ---------- Admin : set VIP level ----------
+
+app.post("/admin/set-vip", (req, res) => {
+  try {
+    const { adminWallet, targetWallet, vipLevel } = req.body || {};
+
+    if (!adminWallet || !targetWallet || typeof vipLevel !== "number") {
+      return res.status(400).json({ error: "missing_fields" });
+    }
+
+    const adminNorm = adminWallet.toLowerCase();
+    const targetNorm = targetWallet.toLowerCase();
+
+    // Vérif ADMIN
+    if (adminNorm !== ADMIN_WALLET) {
+      console.warn("Tentative admin VIP non autorisée:", adminNorm);
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    // VIP doit être un entier entre 0 et 5
+    if (!Number.isInteger(vipLevel) || vipLevel < 0 || vipLevel > 5) {
+      return res.status(400).json({ error: "invalid_vip_level" });
+    }
+
+    let player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(targetNorm);
+
+    if (!player) {
+      // Si le joueur n'existe pas encore → on le crée directement avec ce VIP
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet,
+          nickname,
+          gems,
+          vip_level,
+          hp_base,
+          dmg_base,
+          free_rolls,
+          current_player_hp,
+          current_bot_hp,
+          current_bot_level
+        )
+        VALUES (?, NULL, 0, ?, 50, 0, 5, 50, 50, 1)
+      `);
+
+      const info = insert.run(targetNorm, vipLevel);
+
+      player = db
+        .prepare("SELECT * FROM players WHERE id = ?")
+        .get(info.lastInsertRowid);
+    } else {
+      db.prepare(
+        "UPDATE players SET vip_level = ?, updated_at = datetime('now') WHERE wallet = ?"
+      ).run(vipLevel, targetNorm);
+
+      player = db
+        .prepare("SELECT * FROM players WHERE wallet = ?")
+        .get(targetNorm);
+    }
+
+    console.log(`⭐ Admin a mis le VIP ${vipLevel} à ${targetNorm}`);
+
+    res.json({
+      ok: true,
+      player: {
+        id: player.id,
+        wallet: player.wallet,
+        vipLevel: player.vip_level,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /admin/set-vip :", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
 
 
 app.post("/admin/give-gems", (req, res) => {
