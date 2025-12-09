@@ -339,28 +339,30 @@ app.post("/admin/give-gems", (req, res) => {
 });
 
 // ---------- Admin : set VIP level ----------
-
 app.post("/admin/set-vip", (req, res) => {
   try {
-    const { adminWallet, targetWallet, vipLevel } = req.body || {};
+    // 🔐 Vérification du token admin comme pour /admin/give-gems
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : null;
 
-    if (!adminWallet || !targetWallet || typeof vipLevel !== "number") {
+    if (!token || !activeAdminTokens.has(token)) {
+      console.warn("❌ Requête admin VIP sans token valide");
+      return res.status(401).json({ error: "unauthorized_admin" });
+    }
+
+    const { targetWallet, vipLevel } = req.body || {};
+
+    if (!targetWallet || typeof vipLevel !== "number") {
       return res.status(400).json({ error: "missing_fields" });
     }
 
-    const adminNorm = adminWallet.toLowerCase();
-    const targetNorm = targetWallet.toLowerCase();
-
-    // Vérif ADMIN
-    if (adminNorm !== ADMIN_WALLET) {
-      console.warn("Tentative admin VIP non autorisée:", adminNorm);
-      return res.status(403).json({ error: "forbidden" });
-    }
-
-    // VIP doit être un entier entre 0 et 5
     if (!Number.isInteger(vipLevel) || vipLevel < 0 || vipLevel > 5) {
       return res.status(400).json({ error: "invalid_vip_level" });
     }
+
+    const targetNorm = targetWallet.toLowerCase();
 
     let player = db
       .prepare("SELECT * FROM players WHERE wallet = ?")
@@ -414,6 +416,8 @@ app.post("/admin/set-vip", (req, res) => {
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
+
+
 
 
 app.post("/admin/give-gems", (req, res) => {
