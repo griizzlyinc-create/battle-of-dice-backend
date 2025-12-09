@@ -233,9 +233,32 @@ try {
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
+// ---------- Admin : login ----------
+app.post("/admin/login", (req, res) => {
+  try {
+    const { password } = req.body || {};
+
+    if (!password) {
+      return res.status(400).json({ error: "missing_password" });
+    }
+
+    if (password !== ADMIN_PASSWORD) {
+      console.warn("❌ Tentative de login admin refusée.");
+      return res.status(403).json({ error: "invalid_password" });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    activeAdminTokens.add(token);
+
+    return res.json({ ok: true, token });
+  } catch (err) {
+    console.error("❌ ERREUR /admin/login :", err);
+    return res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
 
 // ---------- Admin : give gems ----------
-app.post("/admin/give-gems", (req, res) => {
+app.post("/admin/give-gems", (req, res) => {  
   try {
     // 🔐 Vérification du token admin dans le header Authorization: Bearer xxxxx
     const authHeader = req.headers["authorization"] || "";
