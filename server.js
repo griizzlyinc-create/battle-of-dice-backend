@@ -3,6 +3,7 @@
 
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto")
 const { db } = require("./db");
 
 const app = express();
@@ -18,6 +19,11 @@ app.use(
 
 // 🛡️ Wallet admin (en minuscule)
 const ADMIN_WALLET = "0xda2c5580b1acf86d4e4526b00cdf1cd691cd84cb".toLowerCase();  
+// 🛡️ Mot de passe admin (idéalement défini dans les variables d'env Render)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "33127";
+
+// Tokens admin actifs en mémoire
+const activeAdminTokens = new Set();
 
 // ---------- Routes de test ----------
 
@@ -229,6 +235,87 @@ try {
 });
 
 // ---------- Admin : give gems ----------
+app.post("/admin/give-gems", (req, res) => {
+  try {
+    // 🔐 Vérification du token admin dans le header Authorization: Bearer xxxxx
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : null;
+
+    if (!token || !activeAdminTokens.has(token)) {
+      console.warn("❌ Requête admin sans token valide");
+      return res.status(401).json({ error: "unauthorized_admin" });
+    }
+
+    const { targetWallet, amount } = req.body || {};
+
+    if (!targetWallet || typeof amount !== "number") {
+      return res.status(400).json({ error: "missing_fields" });
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "invalid_amount" });
+    }
+
+    const targetNorm = targetWallet.toLowerCase();
+
+    let player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(targetNorm);
+
+    if (!player) {
+      // Si le joueur n'existe pas encore, on crée un joueur de base
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet,
+          nickname,
+          gems,
+          vip_level,
+          hp_base,
+          dmg_base,
+          free_rolls,
+          current_player_hp,
+          current_bot_hp,
+          current_bot_level
+        )
+        VALUES (?, NULL, 0, 0, 50, 0, 5, 50, 50, 1)
+      `);
+
+      const info = insert.run(targetNorm);
+      player = db
+        .prepare("SELECT * FROM players WHERE id = ?")
+        .get(info.lastInsertRowid);
+    }
+
+    const update = db.prepare(
+      "UPDATE players SET gems = gems + ?, updated_at = datetime('now') WHERE wallet = ?"
+    );
+    update.run(amount, targetNorm);
+
+    const updated = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(targetNorm);
+
+    console.log(
+      `💎 Admin a donné ${amount} gems à ${targetNorm} (total: ${updated.gems})`
+    );
+
+    res.json({
+      ok: true,
+      player: {
+        id: updated.id,
+        wallet: updated.wallet,
+        gems: updated.gems,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /admin/give-gems :", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
+
+
 
 app.post("/admin/give-gems", (req, res) => {
   try {
@@ -311,4 +398,3 @@ app.post("/admin/give-gems", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Battle of Dice API running on http://localhost:${PORT}`);
 });
-
