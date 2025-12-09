@@ -20,7 +20,7 @@ app.use(
 // 🛡️ Wallet admin (en minuscule)
 const ADMIN_WALLET = "0xda2c5580b1acf86d4e4526b00cdf1cd691cd84cb".toLowerCase();  
 // 🛡️ Mot de passe admin (idéalement défini dans les variables d'env Render)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "33127";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "0000000000";
 
 // Tokens admin actifs en mémoire
 const activeAdminTokens = new Set();
@@ -438,3 +438,4 @@ app.post("/admin/set-vip", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Battle of Dice API running on http://localhost:${PORT}`);
 });
+
