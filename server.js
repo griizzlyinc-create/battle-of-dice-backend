@@ -20,7 +20,7 @@ app.use(
 // 🛡️ Wallet admin (en minuscule)
 const ADMIN_WALLET = "0xda2c5580b1acf86d4e4526b00cdf1cd691cd84cb".toLowerCase();  
 // 🛡️ Mot de passe admin (idéalement défini dans les variables d'env Render)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "0000000000";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "33127";
 
 // Tokens admin actifs en mémoire
 const activeAdminTokens = new Set();
@@ -78,56 +78,59 @@ app.post("/auth/login", (req, res) => {
 
       console.log("👤 Nouveau player créé :", player.wallet);
     }
-  // --- Reset quotidien des lancers gratuits ---
-   if (player.last_free_reset_at !== todayStr) {
-    // 🎖 Bonus de free rolls selon le VIP
-    // VIP 0 : +0  → 10
-    // VIP 1 : +2  → 12
-    // VIP 2 : +4  → 14
-    // VIP 3 : +6  → 16
-    // VIP 4 : +8  → 18
-    // VIP 5 : +10 → 20
-    const vip =
-      typeof player.vip_level === "number" ? player.vip_level : 0;
-    const bonusTable = [0, 2, 4, 6, 8, 10];
-    const safeLevel = Math.min(
-      Math.max(vip, 0),
-      bonusTable.length - 1
-    );
-    const vipBonus = bonusTable[safeLevel];
 
-    const NEW_DAILY_ROLLS = 10 + vipBonus;
+    // --- Reset quotidien des lancers gratuits avec bonus VIP ---
+    const todayStr = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
-    db.prepare(`
-      UPDATE players
-      SET free_rolls = ?, last_free_reset_at = ?
-      WHERE id = ?
-    `).run(NEW_DAILY_ROLLS, todayStr, player.id);
+    if (player.last_free_reset_at !== todayStr) {
+      // 🎖 Bonus de free rolls selon le VIP
+      // 0: +0 → 10   | 1: +2 → 12
+      // 2: +4 → 14   | 3: +6 → 16
+      // 4: +8 → 18   | 5: +10 → 20
+      const vip =
+        typeof player.vip_level === "number" ? player.vip_level : 0;
+      const bonusTable = [0, 2, 4, 6, 8, 10];
+      const safeLevel = Math.min(
+        Math.max(vip, 0),
+        bonusTable.length - 1
+      );
+      const vipBonus = bonusTable[safeLevel];
 
-    player.free_rolls = NEW_DAILY_ROLLS;
-    player.last_free_reset_at = todayStr;
-  }
+      const NEW_DAILY_ROLLS = 10 + vipBonus;
 
+      db.prepare(`
+        UPDATE players
+        SET free_rolls = ?, last_free_reset_at = ?
+        WHERE id = ?
+      `).run(NEW_DAILY_ROLLS, todayStr, player.id);
 
-        // On reconstruit l'inventaire de cartes à partir du JSON
+      player.free_rolls = NEW_DAILY_ROLLS;
+      player.last_free_reset_at = todayStr;
+    }
+
+    // --- Inventaire de cartes depuis owned_cards_json ---
     let ownedCards = {
-  attack: {},
-  hp: {},
-  activeAttackId: null,
-  activeHpId: null,
-};
-if (player.owned_cards_json) {
-  try {
-    const parsed = JSON.parse(player.owned_cards_json);
-    ownedCards.attack = parsed.attack || {};
-    ownedCards.hp = parsed.hp || {};
-    ownedCards.activeAttackId = parsed.activeAttackId || null;
-    ownedCards.activeHpId = parsed.activeHpId || null;
-  } catch (e) {
-    console.error("Error parsing owned_cards_json for", player.wallet, e);
-  }
-}
+      attack: {},
+      hp: {},
+      activeAttackId: null,
+      activeHpId: null,
+    };
 
+    if (player.owned_cards_json) {
+      try {
+        const parsed = JSON.parse(player.owned_cards_json);
+        ownedCards.attack = parsed.attack || {};
+        ownedCards.hp = parsed.hp || {};
+        ownedCards.activeAttackId = parsed.activeAttackId || null;
+        ownedCards.activeHpId = parsed.activeHpId || null;
+      } catch (e) {
+        console.error(
+          "Error parsing owned_cards_json for",
+          player.wallet,
+          e
+        );
+      }
+    }
 
     // Réponse au front
     res.json({
@@ -144,12 +147,12 @@ if (player.owned_cards_json) {
       currentBotLevel: player.current_bot_level,
       ownedCards, // 🔥 inventaire envoyé au front
     });
-
   } catch (err) {
     console.error("❌ ERREUR /auth/login :", err);
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
+
 
 // ---------- Sauvegarde de l'état joueur ----------
 
@@ -438,4 +441,3 @@ app.post("/admin/set-vip", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Battle of Dice API running on http://localhost:${PORT}`);
 });
-
