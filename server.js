@@ -247,6 +247,68 @@ try {
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
+
+// ---------- Rename player nickname ----------
+app.post("/player/rename", (req, res) => {
+  try {
+    const body = req.body || {};
+    const wallet = body.wallet;
+    const nickname = body.nickname;
+
+    if (!wallet || !nickname) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "missing_fields" });
+    }
+
+    const cleanNickname = String(nickname).trim();
+    if (cleanNickname.length < 3 || cleanNickname.length > 16) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid_nickname",
+      });
+    }
+
+    const walletNorm = wallet.toLowerCase();
+
+    const player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(walletNorm);
+
+    if (!player) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "player_not_found" });
+    }
+
+    db.prepare(
+      `
+      UPDATE players
+      SET nickname = ?, updated_at = datetime('now')
+      WHERE wallet = ?
+    `
+    ).run(cleanNickname, walletNorm);
+
+    const updated = db
+      .prepare(
+        "SELECT wallet, nickname, gems FROM players WHERE wallet = ?"
+      )
+      .get(walletNorm);
+
+    res.json({
+      ok: true,
+      nickname: updated.nickname,
+      gems: updated.gems,
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /player/rename :", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "internal_error",
+    });
+  }
+});
+
 // ---------- Admin : login ----------
 app.post("/admin/login", (req, res) => {
   try {
