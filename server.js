@@ -248,6 +248,66 @@ try {
   }
 });
 
+// ---------- Rename nickname (75 gems) ----------
+
+app.post("/player/rename", (req, res) => {
+  try {
+    const { wallet, nickname } = req.body || {};
+
+    if (!wallet || typeof nickname !== "string") {
+      return res.status(400).json({ error: "missing_fields" });
+    }
+
+    const walletNorm = wallet.toLowerCase();
+    const trimmed = nickname.trim();
+
+    // longueur 3–8 caractères max
+    if (trimmed.length < 3 || trimmed.length > 8) {
+      return res.status(400).json({ error: "invalid_length" });
+    }
+
+    const player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(walletNorm);
+
+    if (!player) {
+      return res.status(404).json({ error: "player_not_found" });
+    }
+
+    const RENAME_COST = 75;
+
+    if (player.gems < RENAME_COST) {
+      return res.status(400).json({ error: "not_enough_gems" });
+    }
+
+    db.prepare(`
+      UPDATE players
+      SET nickname = ?, gems = gems - ?, updated_at = datetime('now')
+      WHERE wallet = ?
+    `).run(trimmed, RENAME_COST, walletNorm);
+
+    const updated = db
+      .prepare(
+        "SELECT id, wallet, nickname, gems, vip_level FROM players WHERE wallet = ?"
+      )
+      .get(walletNorm);
+
+    res.json({
+      ok: true,
+      player: {
+        id: updated.id,
+        wallet: updated.wallet,
+        nickname: updated.nickname,
+        gems: updated.gems,
+        vipLevel: updated.vip_level,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /player/rename :", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
+
 // ---------- Rename player nickname ----------
 app.post("/player/rename", (req, res) => {
   try {
