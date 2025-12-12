@@ -6,15 +6,6 @@ const cors = require("cors");
 const crypto = require("crypto")
 const { db } = require("./db");
 
-const {
-  query,
-  queryOne,
-  getPlayerByWallet,
-  createPlayerWithWallet,
-  updatePlayerState,
-} = require("./db-mysql");
-
-
 const app = express();
 
 const PORT = process.env.PORT || 3000; // 👈 IMPORTANT pour Render
@@ -40,22 +31,14 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", message: "Battle of Dice API up" });
 });
 
-app.get("/players", async (req, res) => {
-  try {
-    const rows = await query(
-      "SELECT * FROM players ORDER BY id DESC LIMIT 50"
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ ERREUR /players :", err);
-    res.status(500).json({ error: err.message || "internal_error" });
-  }
+app.get("/players", (req, res) => {
+  const rows = db.prepare("SELECT * FROM players").all();
+  res.json(rows);
 });
-
 
 // ---------- Auth / Login joueur ----------
 
-app.post("/auth/login", async (req, res) => {
+app.post("/auth/login", (req, res) => {
   try {
     const { wallet } = req.body || {};
 
@@ -65,64 +48,67 @@ app.post("/auth/login", async (req, res) => {
 
     const walletNorm = wallet.toLowerCase();
 
-    // 🔹 1) On récupère le player en MySQL
-    let player = await getPlayerByWallet(walletNorm);
+    let player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(walletNorm);
 
-    // 🔹 2) S'il n'existe pas → on le crée
+    // Joueur non trouvé → on le crée avec des valeurs par défaut
     if (!player) {
-      player = await createPlayerWithWallet(walletNorm);
-      console.log("👤 Nouveau player créé (MySQL) :", player.wallet);
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet,
+          nickname,
+          gems,
+          vip_level,
+          hp_base,
+          dmg_base,
+          free_rolls,
+          current_player_hp,
+          current_bot_hp,
+          current_bot_level
+        )
+        VALUES (?, NULL, 0, 0, 50, 0, 5, 50, 50, 1)
+      `);
+
+      const info = insert.run(walletNorm);
+
+      player = db
+        .prepare("SELECT * FROM players WHERE id = ?")
+        .get(info.lastInsertRowid);
+
+      console.log("👤 Nouveau player créé :", player.wallet);
     }
 
-    // 🔹 3) Reset quotidien des free rolls (en fonction du VIP)
+    // --- Reset quotidien des lancers gratuits avec bonus VIP ---
     const todayStr = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
-    let lastResetDate = null;
-    if (player.last_free_reset_at instanceof Date) {
-      // DATETIME MySQL → objet Date
-      lastResetDate = player.last_free_reset_at.toISOString().slice(0, 10);
-    } else if (typeof player.last_free_reset_at === "string") {
-      // au cas où MySQL renverrait une string
-      lastResetDate = player.last_free_reset_at.slice(0, 10);
-    }
+    if (player.last_free_reset_at !== todayStr) {
+      // 🎖 Bonus de free rolls selon le VIP
+      // 0: +0 → 10   | 1: +2 → 12
+      // 2: +4 → 14   | 3: +6 → 16
+      // 4: +8 → 18   | 5: +10 → 20
+      const vip =
+        typeof player.vip_level === "number" ? player.vip_level : 0;
+      const bonusTable = [0, 2, 4, 6, 8, 10];
+      const safeLevel = Math.min(
+        Math.max(vip, 0),
+        bonusTable.length - 1
+      );
+      const vipBonus = bonusTable[safeLevel];
 
-    if (lastResetDate !== todayStr) {
-      const baseDailyRolls = 10;
+      const NEW_DAILY_ROLLS = 10 + vipBonus;
 
-      // Bonus VIP (rang 0 => +0, 1 => +2, ..., 5 => +10)
-      let vipBonus = 0;
-      switch (player.vip_level) {
-        case 1:
-          vipBonus = 2;
-          break;
-        case 2:
-          vipBonus = 4;
-          break;
-        case 3:
-          vipBonus = 6;
-          break;
-        case 4:
-          vipBonus = 8;
-          break;
-        case 5:
-          vipBonus = 10;
-          break;
-        default:
-          vipBonus = 0;
-      }
-
-      const NEW_DAILY_ROLLS = baseDailyRolls + vipBonus;
-
-      await updatePlayerState(player.id, {
-        free_rolls: NEW_DAILY_ROLLS,
-        last_free_reset_at: new Date(),
-      });
+      db.prepare(`
+        UPDATE players
+        SET free_rolls = ?, last_free_reset_at = ?
+        WHERE id = ?
+      `).run(NEW_DAILY_ROLLS, todayStr, player.id);
 
       player.free_rolls = NEW_DAILY_ROLLS;
-      player.last_free_reset_at = new Date();
+      player.last_free_reset_at = todayStr;
     }
 
-    // 🔹 4) Inventaire de cartes
+    // --- Inventaire de cartes depuis owned_cards_json ---
     let ownedCards = {
       attack: {},
       hp: {},
@@ -138,11 +124,15 @@ app.post("/auth/login", async (req, res) => {
         ownedCards.activeAttackId = parsed.activeAttackId || null;
         ownedCards.activeHpId = parsed.activeHpId || null;
       } catch (e) {
-        console.error("Error parsing owned_cards_json for", player.wallet, e);
+        console.error(
+          "Error parsing owned_cards_json for",
+          player.wallet,
+          e
+        );
       }
     }
 
-    // 🔹 5) Réponse au front
+    // Réponse au front
     res.json({
       id: player.id,
       wallet: player.wallet,
@@ -155,7 +145,7 @@ app.post("/auth/login", async (req, res) => {
       currentPlayerHp: player.current_player_hp,
       currentBotHp: player.current_bot_hp,
       currentBotLevel: player.current_bot_level,
-      ownedCards,
+      ownedCards, // 🔥 inventaire envoyé au front
     });
   } catch (err) {
     console.error("❌ ERREUR /auth/login :", err);
@@ -166,7 +156,7 @@ app.post("/auth/login", async (req, res) => {
 
 // ---------- Sauvegarde de l'état joueur ----------
 
-app.post("/player/state", async (req, res) => {
+app.post("/player/state", (req, res) => {
   try {
     const {
       wallet,
@@ -175,8 +165,9 @@ app.post("/player/state", async (req, res) => {
       playerHP,
       botHP,
       currentBotLevel,
-      ownedCards, // inventaire cartes
+      ownedCards, // 👈 on récupère aussi les cartes
     } = req.body || {};
+
 
     if (!wallet) {
       return res.status(400).json({ error: "wallet is required" });
@@ -184,42 +175,60 @@ app.post("/player/state", async (req, res) => {
 
     const walletNorm = wallet.toLowerCase();
 
-    const player = await getPlayerByWallet(walletNorm);
+    const player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(walletNorm);
+
     if (!player) {
       return res.status(404).json({ error: "player_not_found" });
     }
 
-    // 🔸 sérialiser les cartes
+
+        // sérialiser les cartes en JSON
     let ownedCardsJson = null;
-    try {
-      if (ownedCards) {
-        const safe = {
-          attack: ownedCards.attack || {},
-          hp: ownedCards.hp || {},
-          activeAttackId: ownedCards.activeAttackId || null,
-          activeHpId: ownedCards.activeHpId || null,
-        };
-        ownedCardsJson = JSON.stringify(safe);
-      }
-    } catch (e) {
-      console.error("Error serializing ownedCards:", e);
-    }
+try {
+  if (ownedCards) {
+    const safe = {
+      attack: ownedCards.attack || {},
+      hp: ownedCards.hp || {},
+      activeAttackId: ownedCards.activeAttackId || null,
+      activeHpId: ownedCards.activeHpId || null,
+    };
+    ownedCardsJson = JSON.stringify(safe);
+  }
+} catch (e) {
+  console.error("Error serializing ownedCards:", e);
+}
 
-    // 🔸 construire l'objet "fields" à mettre à jour
-    const fields = {};
-    if (typeof gems === "number") fields.gems = gems;
-    if (typeof freeRolls === "number") fields.free_rolls = freeRolls;
-    if (typeof playerHP === "number") fields.current_player_hp = playerHP;
-    if (typeof botHP === "number") fields.current_bot_hp = botHP;
-    if (typeof currentBotLevel === "number")
-      fields.current_bot_level = currentBotLevel;
-    if (ownedCardsJson !== null) fields.owned_cards_json = ownedCardsJson;
 
-    if (Object.keys(fields).length > 0) {
-      await updatePlayerState(player.id, fields);
-    }
+    const stmt = db.prepare(`
+      UPDATE players
+      SET
+        gems = COALESCE(?, gems),
+        free_rolls = COALESCE(?, free_rolls),
+        current_player_hp = COALESCE(?, current_player_hp),
+        current_bot_hp = COALESCE(?, current_bot_hp),
+        current_bot_level = COALESCE(?, current_bot_level),
+        owned_cards_json = COALESCE(?, owned_cards_json),
+        updated_at = datetime('now')
+      WHERE wallet = ?
+    `);
 
-    const updated = await getPlayerByWallet(walletNorm);
+    stmt.run(
+      typeof gems === "number" ? gems : null,
+      typeof freeRolls === "number" ? freeRolls : null,
+      typeof playerHP === "number" ? playerHP : null,
+      typeof botHP === "number" ? botHP : null,
+      typeof currentBotLevel === "number" ? currentBotLevel : null,
+      ownedCardsJson,
+      walletNorm
+    );
+
+
+
+    const updated = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(walletNorm);
 
     res.json({
       ok: true,
@@ -238,7 +247,6 @@ app.post("/player/state", async (req, res) => {
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
-
 
 // ---------- Rename nickname (75 gems) ----------
 
@@ -386,33 +394,67 @@ app.post("/admin/login", (req, res) => {
 });
 
 // ---------- Admin : give gems ----------
-app.post("/admin/give-gems", async (req, res) => {
+app.post("/admin/give-gems", (req, res) => {  
   try {
-    const { adminWallet, targetWallet, amount } = req.body || {};
+    // 🔐 Vérification du token admin dans le header Authorization: Bearer xxxxx
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : null;
 
-    if (!adminWallet || !targetWallet || typeof amount !== "number") {
+    if (!token || !activeAdminTokens.has(token)) {
+      console.warn("❌ Requête admin sans token valide");
+      return res.status(401).json({ error: "unauthorized_admin" });
+    }
+
+    const { targetWallet, amount } = req.body || {};
+
+    if (!targetWallet || typeof amount !== "number") {
       return res.status(400).json({ error: "missing_fields" });
     }
 
-    const adminNorm = adminWallet.toLowerCase();
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "invalid_amount" });
+    }
+
     const targetNorm = targetWallet.toLowerCase();
 
-    // Vérif ADMIN
-    if (adminNorm !== ADMIN_WALLET) {
-      console.warn("Tentative admin non autorisée:", adminNorm);
-      return res.status(403).json({ error: "forbidden" });
-    }
+    let player = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(targetNorm);
 
-    let player = await getPlayerByWallet(targetNorm);
     if (!player) {
-      player = await createPlayerWithWallet(targetNorm);
+      // Si le joueur n'existe pas encore, on crée un joueur de base
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet,
+          nickname,
+          gems,
+          vip_level,
+          hp_base,
+          dmg_base,
+          free_rolls,
+          current_player_hp,
+          current_bot_hp,
+          current_bot_level
+        )
+        VALUES (?, NULL, 0, 0, 50, 0, 5, 50, 50, 1)
+      `);
+
+      const info = insert.run(targetNorm);
+      player = db
+        .prepare("SELECT * FROM players WHERE id = ?")
+        .get(info.lastInsertRowid);
     }
 
-    const newGems = (player.gems || 0) + amount;
+    const update = db.prepare(
+      "UPDATE players SET gems = gems + ?, updated_at = datetime('now') WHERE wallet = ?"
+    );
+    update.run(amount, targetNorm);
 
-    await updatePlayerState(player.id, { gems: newGems });
-
-    const updated = await getPlayerByWallet(targetNorm);
+    const updated = db
+      .prepare("SELECT * FROM players WHERE wallet = ?")
+      .get(targetNorm);
 
     console.log(
       `💎 Admin a donné ${amount} gems à ${targetNorm} (total: ${updated.gems})`
@@ -431,7 +473,6 @@ app.post("/admin/give-gems", async (req, res) => {
     res.status(500).json({ error: err.message || "internal_error" });
   }
 });
-
 
 // ---------- Admin : set VIP level ----------
 app.post("/admin/set-vip", (req, res) => {
