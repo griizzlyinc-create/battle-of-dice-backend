@@ -146,6 +146,9 @@ app.post("/auth/login", (req, res) => {
       currentBotHp: player.current_bot_hp,
       currentBotLevel: player.current_bot_level,
       ownedCards, // 🔥 inventaire envoyé au front
+      potionsAttack: player.potions_attack ?? 0,
+      potionsHeal: player.potions_heal ?? 0,
+
     });
   } catch (err) {
     console.error("❌ ERREUR /auth/login :", err);
@@ -166,6 +169,8 @@ app.post("/player/state", (req, res) => {
       botHP,
       currentBotLevel,
       ownedCards, // 👈 on récupère aussi les cartes
+      potionsAttack,
+      potionsHeal,
     } = req.body || {};
 
 
@@ -209,20 +214,27 @@ try {
         current_player_hp = COALESCE(?, current_player_hp),
         current_bot_hp = COALESCE(?, current_bot_hp),
         current_bot_level = COALESCE(?, current_bot_level),
+        potions_attack = COALESCE(?, potions_attack),
+        potions_heal   = COALESCE(?, potions_heal),
         owned_cards_json = COALESCE(?, owned_cards_json),
         updated_at = datetime('now')
       WHERE wallet = ?
     `);
 
     stmt.run(
-      typeof gems === "number" ? gems : null,
-      typeof freeRolls === "number" ? freeRolls : null,
-      typeof playerHP === "number" ? playerHP : null,
-      typeof botHP === "number" ? botHP : null,
-      typeof currentBotLevel === "number" ? currentBotLevel : null,
-      ownedCardsJson,
-      walletNorm
-    );
+  typeof gems === "number" ? gems : null,
+  typeof freeRolls === "number" ? freeRolls : null,
+  typeof playerHP === "number" ? playerHP : null,
+  typeof botHP === "number" ? botHP : null,
+  typeof currentBotLevel === "number" ? currentBotLevel : null,
+
+  typeof potionsAttack === "number" ? potionsAttack : null,
+  typeof potionsHeal === "number" ? potionsHeal : null,
+
+  ownedCardsJson,
+  walletNorm
+);
+
 
 
 
@@ -287,10 +299,9 @@ app.post("/player/rename", (req, res) => {
     `).run(trimmed, RENAME_COST, walletNorm);
 
     const updated = db
-      .prepare(
-        "SELECT id, wallet, nickname, gems, vip_level FROM players WHERE wallet = ?"
-      )
-      .get(walletNorm);
+  .prepare("SELECT * FROM players WHERE wallet = ?")
+  .get(walletNorm);
+
 
     res.json({
       ok: true,
@@ -300,6 +311,9 @@ app.post("/player/rename", (req, res) => {
         nickname: updated.nickname,
         gems: updated.gems,
         vipLevel: updated.vip_level,
+        potionsAttack: updated.potions_attack,
+        potionsHeal: updated.potions_heal,
+
       },
     });
   } catch (err) {
@@ -308,66 +322,6 @@ app.post("/player/rename", (req, res) => {
   }
 });
 
-// ---------- Rename player nickname ----------
-app.post("/player/rename", (req, res) => {
-  try {
-    const body = req.body || {};
-    const wallet = body.wallet;
-    const nickname = body.nickname;
-
-    if (!wallet || !nickname) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "missing_fields" });
-    }
-
-    const cleanNickname = String(nickname).trim();
-    if (cleanNickname.length < 3 || cleanNickname.length > 16) {
-      return res.status(400).json({
-        ok: false,
-        error: "invalid_nickname",
-      });
-    }
-
-    const walletNorm = wallet.toLowerCase();
-
-    const player = db
-      .prepare("SELECT * FROM players WHERE wallet = ?")
-      .get(walletNorm);
-
-    if (!player) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "player_not_found" });
-    }
-
-    db.prepare(
-      `
-      UPDATE players
-      SET nickname = ?, updated_at = datetime('now')
-      WHERE wallet = ?
-    `
-    ).run(cleanNickname, walletNorm);
-
-    const updated = db
-      .prepare(
-        "SELECT wallet, nickname, gems FROM players WHERE wallet = ?"
-      )
-      .get(walletNorm);
-
-    res.json({
-      ok: true,
-      nickname: updated.nickname,
-      gems: updated.gems,
-    });
-  } catch (err) {
-    console.error("❌ ERREUR /player/rename :", err);
-    res.status(500).json({
-      ok: false,
-      error: err.message || "internal_error",
-    });
-  }
-});
 
 // ---------- Admin : login ----------
 app.post("/admin/login", (req, res) => {

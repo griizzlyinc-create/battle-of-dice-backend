@@ -71,6 +71,16 @@ ensureColumn(
   "owned_cards_json",
   "ALTER TABLE players ADD COLUMN owned_cards_json TEXT NOT NULL DEFAULT '{}';"
 );
+// Potions
+ensureColumn(
+  "potions_attack",
+  "ALTER TABLE players ADD COLUMN potions_attack INTEGER NOT NULL DEFAULT 0;"
+);
+ensureColumn(
+  "potions_heal",
+  "ALTER TABLE players ADD COLUMN potions_heal INTEGER NOT NULL DEFAULT 0;"
+);
+
 
 console.log("✅ Database initialisée / mise à jour :", DB_FILE);
 
