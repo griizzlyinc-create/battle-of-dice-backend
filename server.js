@@ -100,9 +100,10 @@ app.post("/auth/login", (req, res) => {
 
       db.prepare(`
         UPDATE players
-        SET free_rolls = ?, last_free_reset_at = ?
+        SET free_rolls = ?, last_free_reset_at = ?, free_roll_last_update_ms = ?
         WHERE id = ?
-      `).run(NEW_DAILY_ROLLS, todayStr, player.id);
+        `).run(NEW_DAILY_ROLLS, todayStr, Date.now(), player.id);
+
 
       player.free_rolls = NEW_DAILY_ROLLS;
       player.last_free_reset_at = todayStr;
