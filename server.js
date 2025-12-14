@@ -597,8 +597,12 @@ app.post("/admin/give-chests", (req, res) => {
       insert.run(targetNorm);
     }
 
-    db.prepare(`UPDATE players SET ${col} = ${col} + ?, updated_at = datetime('now') WHERE wallet = ?`)
-      .run(amount, targetNorm);
+    db.prepare(`
+  UPDATE players
+  SET ${col} = COALESCE(${col}, 0) + ?, updated_at = datetime('now')
+  WHERE wallet = ?
+`).run(amount, targetNorm);
+
 
     const updated = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
 
@@ -660,8 +664,12 @@ app.post("/admin/give-potions", (req, res) => {
       insert.run(targetNorm);
     }
 
-    db.prepare(`UPDATE players SET ${col} = ${col} + ?, updated_at = datetime('now') WHERE wallet = ?`)
-      .run(amount, targetNorm);
+    db.prepare(`
+  UPDATE players
+  SET ${col} = COALESCE(${col}, 0) + ?, updated_at = datetime('now')
+  WHERE wallet = ?
+`).run(amount, targetNorm);
+
 
     const updated = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
 
