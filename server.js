@@ -552,7 +552,131 @@ app.post("/admin/set-vip", (req, res) => {
 });
 
 
+// ---------- Admin : give chests ----------
+app.post("/admin/give-chests", (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
+    if (!token || !activeAdminTokens.has(token)) {
+      return res.status(401).json({ error: "unauthorized_admin" });
+    }
+
+    const { targetWallet, chestType, amount } = req.body || {};
+    if (!targetWallet || !chestType || typeof amount !== "number") {
+      return res.status(400).json({ error: "missing_fields" });
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "invalid_amount" });
+    }
+
+    const targetNorm = targetWallet.toLowerCase();
+    const type = String(chestType).toLowerCase();
+
+    const col =
+      type === "wood" ? "chest_wood" :
+      type === "gold" ? "chest_gold" :
+      type === "diamond" ? "chest_diamond" :
+      null;
+
+    if (!col) return res.status(400).json({ error: "invalid_chest_type" });
+
+    let player = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
+
+    if (!player) {
+      // joueur inexistant → on le crée (les nouvelles colonnes ont des DEFAULT)
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet, nickname, gems, vip_level,
+          hp_base, dmg_base, free_rolls,
+          current_player_hp, current_bot_hp, current_bot_level
+        )
+        VALUES (?, NULL, 0, 0, 50, 0, 5, 50, 50, 1)
+      `);
+      insert.run(targetNorm);
+    }
+
+    db.prepare(`UPDATE players SET ${col} = ${col} + ?, updated_at = datetime('now') WHERE wallet = ?`)
+      .run(amount, targetNorm);
+
+    const updated = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
+
+    res.json({
+      ok: true,
+      player: {
+        wallet: updated.wallet,
+        chestWood: updated.chest_wood,
+        chestGold: updated.chest_gold,
+        chestDiamond: updated.chest_diamond,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /admin/give-chests :", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
+
+
+// ---------- Admin : give potions ----------
+app.post("/admin/give-potions", (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    if (!token || !activeAdminTokens.has(token)) {
+      return res.status(401).json({ error: "unauthorized_admin" });
+    }
+
+    const { targetWallet, potionType, amount } = req.body || {};
+    if (!targetWallet || !potionType || typeof amount !== "number") {
+      return res.status(400).json({ error: "missing_fields" });
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "invalid_amount" });
+    }
+
+    const targetNorm = targetWallet.toLowerCase();
+    const type = String(potionType).toLowerCase();
+
+    const col =
+      type === "attack" ? "potions_attack" :
+      type === "heal" ? "potions_heal" :
+      null;
+
+    if (!col) return res.status(400).json({ error: "invalid_potion_type" });
+
+    let player = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
+
+    if (!player) {
+      const insert = db.prepare(`
+        INSERT INTO players (
+          wallet, nickname, gems, vip_level,
+          hp_base, dmg_base, free_rolls,
+          current_player_hp, current_bot_hp, current_bot_level
+        )
+        VALUES (?, NULL, 0, 0, 50, 0, 5, 50, 50, 1)
+      `);
+      insert.run(targetNorm);
+    }
+
+    db.prepare(`UPDATE players SET ${col} = ${col} + ?, updated_at = datetime('now') WHERE wallet = ?`)
+      .run(amount, targetNorm);
+
+    const updated = db.prepare("SELECT * FROM players WHERE wallet = ?").get(targetNorm);
+
+    res.json({
+      ok: true,
+      player: {
+        wallet: updated.wallet,
+        potionsAttack: updated.potions_attack,
+        potionsHeal: updated.potions_heal,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERREUR /admin/give-potions :", err);
+    res.status(500).json({ error: err.message || "internal_error" });
+  }
+});
 
 
 
