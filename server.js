@@ -148,6 +148,8 @@ app.post("/auth/login", (req, res) => {
       ownedCards, // 🔥 inventaire envoyé au front
       potionsAttack: player.potions_attack ?? 0,
       potionsHeal: player.potions_heal ?? 0,
+      freeRollLastUpdateMs: player.free_roll_last_update_ms || Date.now(),
+
 
     });
   } catch (err) {
@@ -162,16 +164,18 @@ app.post("/auth/login", (req, res) => {
 app.post("/player/state", (req, res) => {
   try {
     const {
-      wallet,
-      gems,
-      freeRolls,
-      playerHP,
-      botHP,
-      currentBotLevel,
-      ownedCards, // 👈 on récupère aussi les cartes
-      potionsAttack,
-      potionsHeal,
-    } = req.body || {};
+  wallet,
+  gems,
+  freeRolls,
+  freeRollLastUpdateMs, // ✅ AJOUT ICI
+  playerHP,
+  botHP,
+  currentBotLevel,
+  ownedCards,
+  potionsAttack,
+  potionsHeal,
+} = req.body || {};
+
 
 
     if (!wallet) {
@@ -211,6 +215,7 @@ try {
       SET
         gems = COALESCE(?, gems),
         free_rolls = COALESCE(?, free_rolls),
+        free_roll_last_update_ms = COALESCE(?, free_roll_last_update_ms),
         current_player_hp = COALESCE(?, current_player_hp),
         current_bot_hp = COALESCE(?, current_bot_hp),
         current_bot_level = COALESCE(?, current_bot_level),
@@ -224,6 +229,7 @@ try {
     stmt.run(
   typeof gems === "number" ? gems : null,
   typeof freeRolls === "number" ? freeRolls : null,
+  typeof freeRollLastUpdateMs === "number" ? freeRollLastUpdateMs : null, // ✅ AJOUT ICI
   typeof playerHP === "number" ? playerHP : null,
   typeof botHP === "number" ? botHP : null,
   typeof currentBotLevel === "number" ? currentBotLevel : null,

@@ -80,6 +80,10 @@ ensureColumn(
   "potions_heal",
   "ALTER TABLE players ADD COLUMN potions_heal INTEGER NOT NULL DEFAULT 0;"
 );
+ensureColumn(
+  "free_roll_last_update_ms",
+  "ALTER TABLE players ADD COLUMN free_roll_last_update_ms INTEGER NOT NULL DEFAULT 0;"
+);
 
 
 console.log("✅ Database initialisée / mise à jour :", DB_FILE);
