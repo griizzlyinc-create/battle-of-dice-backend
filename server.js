@@ -149,6 +149,16 @@ app.post("/auth/login", (req, res) => {
       potionsAttack: player.potions_attack ?? 0,
       potionsHeal: player.potions_heal ?? 0,
       freeRollLastUpdateMs: player.free_roll_last_update_ms || Date.now(),
+      chestWood: player.chest_wood ?? 0,
+      chestGold: player.chest_gold ?? 0,
+      chestDiamond: player.chest_diamond ?? 0,
+      chestReadyAt: {
+        wood: player.chest_ready_wood_ms ?? 0,
+        gold: player.chest_ready_gold_ms ?? 0,
+        diamond: player.chest_ready_diamond_ms ?? 0,
+},
+highestBotLevelUnlocked: player.highest_bot_level_unlocked ?? 1,
+
 
 
     });
@@ -174,6 +184,12 @@ app.post("/player/state", (req, res) => {
   ownedCards,
   potionsAttack,
   potionsHeal,
+  chestWood,
+  chestGold,
+  chestDiamond,
+  chestReadyAt,
+  highestBotLevelUnlocked,
+
 } = req.body || {};
 
 
@@ -209,22 +225,37 @@ try {
   console.error("Error serializing ownedCards:", e);
 }
 
+    // ✅ convertir chestReadyAt (objet) en 3 champs numbers
+const woodReady = chestReadyAt?.wood ?? null;
+const goldReady = chestReadyAt?.gold ?? null;
+const diaReady  = chestReadyAt?.diamond ?? null;
 
-    const stmt = db.prepare(`
-      UPDATE players
-      SET
-        gems = COALESCE(?, gems),
-        free_rolls = COALESCE(?, free_rolls),
-        free_roll_last_update_ms = COALESCE(?, free_roll_last_update_ms),
-        current_player_hp = COALESCE(?, current_player_hp),
-        current_bot_hp = COALESCE(?, current_bot_hp),
-        current_bot_level = COALESCE(?, current_bot_level),
-        potions_attack = COALESCE(?, potions_attack),
-        potions_heal   = COALESCE(?, potions_heal),
-        owned_cards_json = COALESCE(?, owned_cards_json),
-        updated_at = datetime('now')
-      WHERE wallet = ?
-    `);
+const stmt = db.prepare(`
+  UPDATE players
+  SET
+    gems = COALESCE(?, gems),
+    free_rolls = COALESCE(?, free_rolls),
+    free_roll_last_update_ms = COALESCE(?, free_roll_last_update_ms),
+    current_player_hp = COALESCE(?, current_player_hp),
+    current_bot_hp = COALESCE(?, current_bot_hp),
+    current_bot_level = COALESCE(?, current_bot_level),
+    potions_attack = COALESCE(?, potions_attack),
+    potions_heal   = COALESCE(?, potions_heal),
+
+    -- ✅ ici tu ajoutes tes champs chests dans le SQL (comme on a dit)
+    chest_wood = COALESCE(?, chest_wood),
+    chest_gold = COALESCE(?, chest_gold),
+    chest_diamond = COALESCE(?, chest_diamond),
+    chest_ready_wood_ms = COALESCE(?, chest_ready_wood_ms),
+    chest_ready_gold_ms = COALESCE(?, chest_ready_gold_ms),
+    chest_ready_diamond_ms = COALESCE(?, chest_ready_diamond_ms),
+    highest_bot_level_unlocked = COALESCE(?, highest_bot_level_unlocked),
+
+    owned_cards_json = COALESCE(?, owned_cards_json),
+    updated_at = datetime('now')
+  WHERE wallet = ?
+`);
+
 
     stmt.run(
   typeof gems === "number" ? gems : null,
@@ -233,9 +264,16 @@ try {
   typeof playerHP === "number" ? playerHP : null,
   typeof botHP === "number" ? botHP : null,
   typeof currentBotLevel === "number" ? currentBotLevel : null,
-
   typeof potionsAttack === "number" ? potionsAttack : null,
   typeof potionsHeal === "number" ? potionsHeal : null,
+
+  typeof chestWood === "number" ? chestWood : null,
+  typeof chestGold === "number" ? chestGold : null,
+  typeof chestDiamond === "number" ? chestDiamond : null,
+  typeof woodReady === "number" ? woodReady : null,
+  typeof goldReady === "number" ? goldReady : null,
+  typeof diaReady === "number" ? diaReady : null,
+  typeof highestBotLevelUnlocked === "number" ? highestBotLevelUnlocked : null,
 
   ownedCardsJson,
   walletNorm

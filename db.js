@@ -84,6 +84,39 @@ ensureColumn(
   "free_roll_last_update_ms",
   "ALTER TABLE players ADD COLUMN free_roll_last_update_ms INTEGER NOT NULL DEFAULT 0;"
 );
+// --- Chests (counts) ---
+ensureColumn(
+  "chest_wood",
+  "ALTER TABLE players ADD COLUMN chest_wood INTEGER NOT NULL DEFAULT 0;"
+);
+ensureColumn(
+  "chest_gold",
+  "ALTER TABLE players ADD COLUMN chest_gold INTEGER NOT NULL DEFAULT 0;"
+);
+ensureColumn(
+  "chest_diamond",
+  "ALTER TABLE players ADD COLUMN chest_diamond INTEGER NOT NULL DEFAULT 0;"
+);
+
+// --- Chests (unlock timers) ---
+ensureColumn(
+  "chest_ready_wood_ms",
+  "ALTER TABLE players ADD COLUMN chest_ready_wood_ms INTEGER NOT NULL DEFAULT 0;"
+);
+ensureColumn(
+  "chest_ready_gold_ms",
+  "ALTER TABLE players ADD COLUMN chest_ready_gold_ms INTEGER NOT NULL DEFAULT 0;"
+);
+ensureColumn(
+  "chest_ready_diamond_ms",
+  "ALTER TABLE players ADD COLUMN chest_ready_diamond_ms INTEGER NOT NULL DEFAULT 0;"
+);
+
+// (optionnel mais utile multi-device)
+ensureColumn(
+  "highest_bot_level_unlocked",
+  "ALTER TABLE players ADD COLUMN highest_bot_level_unlocked INTEGER NOT NULL DEFAULT 1;"
+);
 
 
 console.log("✅ Database initialisée / mise à jour :", DB_FILE);
